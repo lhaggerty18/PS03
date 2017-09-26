@@ -1,14 +1,17 @@
 ---
-title: "STAT/MATH 495: Problem Set 03"
-author: "WRITE YOUR NAME HERE"
-date: "2017-09-26"
+title: 'STAT/MATH 495: Problem Set 03'
+author: "Luke Haggerty"
+date: '2017-09-26'
 output:
   html_document:
-    toc: true
-    toc_float: true
+    collapsed: no
+    smooth_scroll: no
+    toc: yes
     toc_depth: 2
-    collapsed: false
-    smooth_scroll: false
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
 ---
 
 ```{r setup, include=FALSE}
@@ -16,6 +19,7 @@ knitr::opts_chunk$set(echo = TRUE, fig.width=8, fig.height=4.5)
 
 # Load packages
 library(tidyverse)
+library(stats)
 data1 <- read_csv("data/data1.csv")
 data2 <- read_csv("data/data2.csv")
 ```
@@ -32,13 +36,149 @@ For both `data1` and `data2` tibbles (a tibble is a data frame with some
 * Give your estimate $\widehat{\sigma}$ of $\sigma$ where the noise component $\epsilon_i$ is distributed with mean 0 and standard deviation $\sigma$.
 
 
+
+```{r}
+
+#This is a function that will create a six-fold cross validation with degrees of freedom and the dataset as inputs and return the average Mean Square Error
+
+crossvalidation <- function(degfree, d){ 
+  
+  ##The following folds are comprised of a 500 observations sized validation set and a 2500 observation sized training set. Each successive fold takes a new validation set sampled from the previous (prime) training set, so as to not repeat data points. The old validation set(s) are then added. the last fold code is slightly different because the fifth prime training set contains only the points that would be in the sixth validation set, so it makes some of the code used for the other sets unnecessary.
+  
+  validation1 <- d %>%  #first fold
+    sample_n(500)
+  training1 <- d %>% 
+    anti_join(validation1, by="ID")
+
+  validation2 <- training1 %>% #second fold
+    sample_n(500)
+  training2prime <- training1 %>% 
+    anti_join(validation2, by="ID")
+  training2 <- training2prime %>%
+    union(validation1, by ="ID")
+
+  validation3 <- training2prime %>% #third fold
+    sample_n(500)
+  training3prime <- training2prime %>% 
+    anti_join(validation3, by="ID")
+  training3 <- training3prime %>%
+    union(validation2, by ="ID")
+  training3 <- training3 %>%
+    union(validation1, by ="ID")
+
+  validation4 <- training3prime %>% #fourth fold
+    sample_n(500)
+  training4prime <- training3prime %>% 
+    anti_join(validation4, by="ID")
+  training4 <- training4prime %>%
+    union(validation3, by ="ID")
+  training4 <- training4 %>%
+    union(validation2, by ="ID")
+  training4 <- training4 %>%
+    union(validation1, by ="ID")
+
+  validation5 <- training4prime %>% #fifth fold
+    sample_n(500)
+  training5prime <- training4prime %>% 
+    anti_join(validation5, by="ID")
+  training5 <- training5prime %>%
+    union(validation4, by ="ID")
+  training5 <- training5 %>%
+    union(validation3, by ="ID")
+  training5 <- training5 %>%
+    union(validation2, by ="ID")
+  training5 <- training5 %>%
+    union(validation1, by ="ID")
+
+  validation6 <- training5prime #sixth fold
+  training6 <- training5 %>% 
+    anti_join(validation6, by="ID")
+  training6 <- training6 %>%
+    union(validation5, by ="ID")
+
+  #The following code uses the above folds to fit models to the training sets, then applies that model to the respective validation set. Then, the MSE of the model on the validation set is computed.
+
+  model1 <- smooth.spline(training1$x, training1$y, df = degfree) #first fitted model
+  test1 <- predict(model1, validation1$x) %>% as.tibble()
+  MSE1 = mean((validation1$y - test1$y)^2)
+
+  model2 <- smooth.spline(training2$x, training2$y, df = degfree) #second fitted model
+  test2 <- predict(model2, validation2$x) %>% as.tibble()
+  MSE2 = mean((validation2$y - test2$y)^2)
+
+  model3 <- smooth.spline(training3$x, training3$y, df = degfree) #third fitted model
+  test3 <- predict(model3, validation3$x) %>% as.tibble()
+  MSE3 = mean((validation3$y - test3$y)^2)
+
+  model4 <- smooth.spline(training4$x, training4$y, df = degfree) #fourth fitted model
+  test4 <- predict(model4, validation4$x) %>% as.tibble()
+  MSE4 = mean((validation4$y - test4$y)^2)
+
+  model5 <- smooth.spline(training5$x, training5$y, df = degfree) #fifth fitted model
+  test5 <- predict(model5, validation5$x) %>% as.tibble()
+  MSE5 = mean((validation5$y - test5$y)^2)
+
+  model6 <- smooth.spline(training6$x, training6$y, df = degfree) #sixth fitted model
+  test6 <- predict(model6, validation6$x) %>% as.tibble()
+  MSE6 = mean((validation6$y - test6$y)^2)
+
+  #Here, the MSE's are averaged and the average is returned.
+  
+  avgMSE <- (MSE1 + MSE2 + MSE3 + MSE4 + MSE5 + MSE6)/6
+  
+  return(avgMSE)
+}
+
+```
+
+
 # Data 1
 
 ```{r, echo=TRUE, warning=FALSE, message=FALSE}
+vec1 = c() #This creates an empty vector
+
+for(i in 2:101){
+  vec1[i] <- crossvalidation(i, data1) #This inputs every value inclusive between 2 and 101 as the degrees of freedom value in the crossvalidation function. It stores the average MSE's in the empty vector.
+}
+
+df1 <- which.min(vec1) #This finds the index of the minimum MSE. The index of the minimum MSE corresponds to the degrees of freedom to the minimum MSE
+
+smooth.spline(data1$x, data1$y, df = df1) %>% #This graphs the function with the minimum MSE,chosen because it has the smallest Mean Standard Error
+  broom::augment() %>% 
+  ggplot(aes(x=x)) +
+  geom_point(aes(y=y)) +
+  geom_line(aes(y=.fitted), col="blue", size=1)
+
+sigma1 <- sqrt(vec1[df1]) #This is the estimate for sigma. It is the RMSE. The RMSE corresponds sigma here because it is given that the error was created with mean zero.
+
+sigma1 #My estimate for sigma
 ```
+
+My estimate for sigama is `r sigma1`. The function has `r df1` degrees of freedom.
+
 
 # Data 2
 
 ```{r, echo=TRUE, warning=FALSE, message=FALSE}
+#Notes on code identical to above chunk
+
+vec2 = c()
+
+for(i in 2:101){
+  vec2[i] <- crossvalidation(i, data2)
+}
+
+df2 <- which.min(vec2)
+
+smooth.spline(data2$x, data2$y, df = df2) %>% #This graphs the function with the minimum MSE,chosen because it has the smallest Mean Standard Error
+  broom::augment() %>% 
+  ggplot(aes(x=x)) +
+  geom_point(aes(y=y)) +
+  geom_line(aes(y=.fitted), col="blue", size=1)
+
+sigma2 <- sqrt(vec2[df2])
+
+sigma2 #My estimate for sigma
 ```
 
+My estimate for sigama is `r sigma2`. The function has `r df2` degrees of freedom.
